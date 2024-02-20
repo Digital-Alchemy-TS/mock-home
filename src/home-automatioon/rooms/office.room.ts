@@ -1,31 +1,25 @@
-import { LIB_AUTOMATION_LOGIC } from "@zcc/automation-logic";
-import { TServiceParams } from "@zcc/boilerplate";
-import { LIB_HOME_ASSISTANT } from "@zcc/home-assistant";
-import { ZCC } from "@zcc/utilities";
-import { LIB_VIRTUAL_ENTITY } from "@zcc/virtual-entity";
+import { CronExpression, TServiceParams, ZCC } from "@digital-alchemy/core";
 import dayjs from "dayjs";
 
-import { AUTOMATION_EXAMPLE_APP } from "../main.mjs";
-
 export function Office({
-  getApis,
+  synapse,
   context,
+  home_automation,
+  automation,
+  hass,
   logger,
   scheduler,
+  vividra, // internal device interactions
 }: TServiceParams) {
-  //
-  // imports & definitions
-  //
-  const app = getApis(AUTOMATION_EXAMPLE_APP);
-  const automation = getApis(LIB_AUTOMATION_LOGIC);
-  const hass = getApis(LIB_HOME_ASSISTANT);
-  const virtual = getApis(LIB_VIRTUAL_ENTITY);
-
-  //
-  // General use functions
-  //
+  const DIM_SCENES = new Set<typeof room.scene>([
+    "off",
+    "night",
+    "dim",
+    "evening",
+  ]);
+  // # General functions
   function AutoScene(): typeof room.scene {
-    const [PM10, AM6, PM1030] = ZCC.refTime(["22:00", "06", "22:30"]);
+    const [PM10, AM6, PM1030] = ZCC.shortTime(["PM10", "AM06", "PM10:30"]);
     const now = dayjs();
     if (now.isBetween(AM6, PM10)) {
       return "auto";
@@ -37,37 +31,28 @@ export function Office({
 
   async function Focus() {
     logger.info(`Focus office`);
-    await hass.call.scene.turn_on({
-      entity_id: [
-        app.bed.sceneId("off"),
-        app.living.sceneId("off"),
-        room.sceneId(AutoScene()),
-      ],
-    });
+    home_automation.bedroom.scene = "off";
+    home_automation.living.scene = "off";
+    await home_automation.global.focus();
+    room.scene = AutoScene();
   }
 
-  //
-  // scheduler
-  //
+  // # Scheduler
   scheduler.cron({
-    context,
-    exec: () => {
-      if (!["auto", "dim"].includes(room.scene)) {
+    exec: async () => {
+      const updateScenes = ["dim", "night", "auto"];
+      if (!updateScenes.includes(room.scene)) {
         return;
       }
-      // go to bed, seriously
-      room.scene = "evening";
+      room.scene = AutoScene();
     },
-    schedule: "30 22 * * *",
+    // 10:30PM
+    schedule: ["0 22 30 * *", "0 22 31 * *", CronExpression.EVERY_DAY_AT_6AM],
   });
 
-  //
-  // the room
-  //
-
+  // # Room definition
   const room = automation.room({
     context,
-    id: "office",
     name: "Office",
     scenes: {
       auto: {
@@ -145,36 +130,29 @@ export function Office({
     },
   });
 
-  //
-  // entities
-  //
-  // official
-  const isHome = hass.entity.byId("binary_sensor.is_home");
-  const { meetingMode } = app.sensors;
+  // # Entities
+  // ## official
+  const isHome = hass.entity.byId("binary_sensor.zoe_is_home");
+  const { meetingMode, windowsOpen } = home_automation.sensors;
 
-  // virtual
-
-  virtual.button({
+  // ## virtual
+  synapse.button({
     context,
     exec: async () => await Focus(),
-    id: "office_focus",
     name: "Office Focus",
   });
 
-  //
-  // managed switches
-  //
-
-  // Blanket light
-  automation.managedSwitch({
+  // # Managed switches
+  // ## Blanket light
+  automation.managed_switch({
     context,
     entity_id: "switch.blanket_light",
-    onEntityUpdate: [meetingMode, isHome],
+    onUpdate: [meetingMode, isHome],
     shouldBeOn() {
       if (isHome.state === "off") {
         return false;
       }
-      if (meetingMode.on) {
+      if (meetingMode.state === "on") {
         return true;
       }
       const [AM7, PM7, NOW] = ZCC.shortTime(["AM7", "PM7", "NOW"]);
@@ -182,27 +160,27 @@ export function Office({
     },
   });
 
-  // Fairy lights
-  automation.managedSwitch({
+  // ## Fairy lights
+  automation.managed_switch({
     context,
     entity_id: "switch.fairy_lights",
-    onEntityUpdate: [meetingMode, isHome],
+    onUpdate: [meetingMode, isHome],
     shouldBeOn() {
-      if (isHome.state === "off") {
-        return false;
-      }
+      // if (isHome.state === "off") {
+      //   return false;
+      // }
       const [AM7, PM10, NOW] = ZCC.shortTime(["AM7", "PM10", "NOW"]);
       return NOW.isBetween(AM7, PM10);
     },
   });
 
-  // Plant lights
-  automation.managedSwitch({
+  // ## Plant lights
+  automation.managed_switch({
     context,
     entity_id: "switch.desk_strip_office_plants",
-    onEntityUpdate: [meetingMode],
+    onUpdate: [meetingMode],
     shouldBeOn() {
-      if (meetingMode.on) {
+      if (meetingMode.state === "on") {
         return false;
       }
       if (!automation.solar.isBetween("sunrise", "sunset")) {
@@ -223,11 +201,11 @@ export function Office({
     },
   });
 
-  // Wax warmer
-  automation.managedSwitch({
+  // ## Wax warmer
+  automation.managed_switch({
     context,
     entity_id: "switch.desk_strip_wax",
-    onEntityUpdate: ["switch.windows_open", room.currentSceneEntity],
+    onUpdate: [windowsOpen, room.sceneId(room.scene)],
     shouldBeOn() {
       const scene = room.scene;
       const [PM9, AM5, NOW] = ZCC.shortTime(["PM9", "AM5", "NOW"]);
@@ -235,34 +213,28 @@ export function Office({
     },
   });
 
-  //
-  // pico bindings: wall
-  //
-  app.pico.office({
+  // # Pico bindings
+  // ## Wall
+  home_automation.pico.office({
     context,
     exec: async () => (room.scene = "high"),
     match: ["on"],
   });
 
-  app.pico.office({
+  home_automation.pico.office({
     context,
-    exec: async () =>
-      await hass.call.scene.turn_on({
-        entity_id: AutoScene(),
-      }),
+    exec: async () => (room.scene = AutoScene()),
     match: ["stop", "stop"],
   });
 
-  app.pico.office({
+  home_automation.pico.office({
     context,
     exec: async () => (room.scene = "off"),
     match: ["off"],
   });
 
-  //
-  // pico bindings: desk
-  //
-  app.pico.desk({
+  // ## Desk
+  home_automation.pico.desk({
     context,
     exec: async () =>
       await hass.call.fan.decrease_speed({
@@ -271,7 +243,13 @@ export function Office({
     match: ["lower"],
   });
 
-  app.pico.desk({
+  home_automation.pico.desk({
+    context,
+    exec: async () => (meetingMode.on = !meetingMode.on),
+    match: ["stop", "on"],
+  });
+
+  home_automation.pico.desk({
     context,
     exec: async () =>
       await hass.call.fan.turn_off({
@@ -280,7 +258,7 @@ export function Office({
     match: ["lower", "lower"],
   });
 
-  app.pico.desk({
+  home_automation.pico.desk({
     context,
     exec: async () =>
       await hass.call.fan.increase_speed({
@@ -289,38 +267,48 @@ export function Office({
     match: ["raise"],
   });
 
-  app.pico.desk({
+  // plug repurposed while cold out
+  // home_automation.pico.desk({
+  //   context,
+  //   exec: async () =>
+  //     await hass.call.switch.toggle({
+  //       entity_id: "switch.foot_fan",
+  //     }),
+  //   match: ["stop", "lower"],
+  // });
+
+  home_automation.pico.desk({
     context,
     exec: async () => await Focus(),
-    match: ["stop", "stop"],
+    match: ["stop", "stop", "stop"],
   });
 
-  app.pico.desk({
+  home_automation.pico.desk({
     context,
     exec: async () => (room.scene = "high"),
     match: ["on"],
   });
 
-  app.pico.desk({
+  home_automation.pico.desk({
     context,
     exec: async () => (room.scene = "off"),
     match: ["off"],
   });
 
-  app.pico.desk({
-    context,
-    exec: async () => await app.mock.findPhone(),
-    match: ["stop", "lower", "raise"],
-  });
+  room.currentSceneEntity.onUpdate(async () => {
+    // Tie monitor brightness to room scene
+    // xrandr --output {display} --brightness {value}
+    await (DIM_SCENES.has(room.scene)
+      ? vividra.graft.setMonitorDim()
+      : vividra.graft.setMonitorBright());
 
-  hass.entity
-    .byId("binary_sensor.doorbell_doorbell")
-    .onUpdate(async doorbell => {
-      if (doorbell.state === "off") {
-        return;
-      }
-      await app.mock.computerDoorbell();
-    });
+    // Turn off display, and set the screen timeout super short when room is off
+    // Set display timeout very long, and turn back on display when room is turned on
+    // xset dpms force {off|on}
+    await (room.scene === "off"
+      ? vividra.graft.shortTimeout()
+      : vividra.graft.longTimeout());
+  });
 
   return room;
 }

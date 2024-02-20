@@ -1,21 +1,13 @@
-import { LIB_AUTOMATION_LOGIC } from "@zcc/automation-logic";
-import { TServiceParams } from "@zcc/boilerplate";
-import { LIB_HOME_ASSISTANT } from "@zcc/home-assistant";
-import { CronExpression, ZCC } from "@zcc/utilities";
+import { CronExpression, TServiceParams, ZCC } from "@digital-alchemy/core";
 
-import { AUTOMATION_EXAMPLE_APP } from "../main.mjs";
-
-export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
-  //
-  // imports & definitions
-  //
-  const app = getApis(AUTOMATION_EXAMPLE_APP);
-  const automation = getApis(LIB_AUTOMATION_LOGIC);
-  const hass = getApis(LIB_HOME_ASSISTANT);
-
-  //
-  // scheduler
-  //
+export function LivingRoom({
+  automation,
+  context,
+  scheduler,
+  home_automation,
+  hass,
+}: TServiceParams) {
+  // # Scheduled actions
   automation.solar.onEvent({
     context,
     eventName: "sunriseEnd",
@@ -37,7 +29,6 @@ export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
   });
 
   scheduler.cron({
-    context,
     exec: async () => {
       if (room.scene === "auto") {
         room.scene = "evening";
@@ -46,13 +37,9 @@ export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
     schedule: CronExpression.EVERY_DAY_AT_11PM,
   });
 
-  //
-  // the room
-  //
-
+  // # Room definition
   const room = automation.room({
     context,
-    id: "living_room",
     name: "Living Room",
     scenes: {
       auto: {
@@ -112,18 +99,15 @@ export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
     },
   });
 
-  //
-  // entities
-  //
-  const { guestMode, isHome, meetingMode } = app.sensors;
+  // # Entities
+  const isHome = hass.entity.byId("binary_sensor.zoe_is_home");
+  const { guestMode, meetingMode } = home_automation.sensors;
 
-  //
-  // managed switches
-  //
-  automation.managedSwitch({
+  // # Managed switches
+  automation.managed_switch({
     context,
     entity_id: "switch.media_backdrop",
-    onEntityUpdate: [meetingMode, isHome],
+    onUpdate: [meetingMode, isHome],
     shouldBeOn() {
       if (isHome.state === "off") {
         return false;
@@ -136,38 +120,36 @@ export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
     },
   });
 
-  automation.managedSwitch({
+  automation.managed_switch({
     context,
     entity_id: "switch.moon_mirror",
-    onEntityUpdate: [guestMode],
+    onUpdate: [guestMode],
     shouldBeOn() {
       const [PM5, AM5, NOW] = ZCC.shortTime(["PM5", "AM5", "NOW"]);
       if (!NOW.isBetween(AM5, PM5)) {
         return true;
       }
-      return guestMode.on;
+      return guestMode.state === "on";
     },
   });
 
-  //
-  // pico bindings: wall
-  //
-  app.pico.living({
+  // # Pico bindings
+  home_automation.pico.living({
     context,
     exec: async () => (room.scene = "auto"),
     match: ["stop", "stop"],
   });
 
-  app.pico.living({
+  home_automation.pico.living({
     context,
-    exec: async () =>
-      await hass.call.scene.turn_on({
-        entity_id: ["scene.office_off", "scene.bed_off"],
-      }),
+    exec: async () => {
+      home_automation.office.scene = "off";
+      home_automation.bedroom.scene = "off";
+    },
     match: ["stop", "stop", "stop"],
   });
 
-  app.pico.living({
+  home_automation.pico.living({
     context,
     exec: () =>
       (room.scene = automation.solar.isBetween("sunriseEnd", "sunsetStart")
@@ -176,7 +158,7 @@ export function LivingRoom({ getApis, context, scheduler }: TServiceParams) {
     match: ["on"],
   });
 
-  app.pico.living({
+  home_automation.pico.living({
     context,
     exec: async () => (room.scene = "off"),
     match: ["off"],

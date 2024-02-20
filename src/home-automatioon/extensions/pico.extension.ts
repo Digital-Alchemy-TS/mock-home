@@ -1,6 +1,9 @@
-import { LIB_AUTOMATION_LOGIC } from "@zcc/automation-logic";
-import { TServiceParams } from "@zcc/boilerplate";
-import { TBlackHole, TContext, ZCC } from "@zcc/utilities";
+import {
+  TBlackHole,
+  TContext,
+  TServiceParams,
+  ZCC,
+} from "@digital-alchemy/core";
 
 type DeviceName = keyof typeof PicoIds;
 
@@ -17,14 +20,14 @@ export type PicoEvent<NAME extends DeviceName> = {
 };
 
 const PicoIds = {
-  bed: "f2aebfc943e4ed4f86936d0545cd0e60",
-  bedroom: "b3d85455702ca9f8da158ad530e19aa7",
-  desk: "732e1df4bcdcd6255be20d729c7c359f",
-  games: "e5ba3501e60d5c74e76033bbfc297df1",
-  living: "e9d176254b6d9b9e7d8aa06aa74c7d8f",
-  loft: "68f4271ed5041a7072b839fe7726fd05",
-  office: "ebdc303ec1cb7c44459441fc694e1d33",
-  testing: "48be9ebd88bc0f50dfdb5ee8a70dfbfa",
+  bed: "af58bc7c849cf506534a04db68f15206",
+  bedroom: "b8c0901cd3307d6218c26bbc91356c35",
+  desk: "311e7afc5fbc6744164356b0f2663cf2",
+  games: "f547d2fdec6dc65f3415fe42f9fc972b",
+  living: "d3e6a05643d61dd4865d6f0f541a5211",
+  loft: "67ed2563dec0b65888bb1323bc988ec7",
+  office: "b121787310e8056fa158a50b7f8f1c4e",
+  spare: "bd415449f84963177c877d124883535f",
 } as const;
 
 export enum Buttons {
@@ -43,9 +46,13 @@ type PicoWatcher = {
 
 type PicoBindings = Record<DeviceName, (options: PicoWatcher) => TBlackHole>;
 
-export function LutronPicoBindings({ getApis }: TServiceParams): PicoBindings {
-  const automation = getApis(LIB_AUTOMATION_LOGIC);
+type TEventData<NAME extends DeviceName> = {
+  data: PicoEvent<NAME>;
+};
 
+export function LutronPicoBindings({
+  automation,
+}: TServiceParams): PicoBindings {
   function LutronPicoSequenceMatcher<NAME extends DeviceName>(
     target_device: NAME,
   ) {
@@ -53,12 +60,13 @@ export function LutronPicoBindings({ getApis }: TServiceParams): PicoBindings {
       return automation.sequence({
         context,
         event_type: "lutron_caseta_button_event",
-        exec: async () => ZCC.safeExec(async () => exec()),
-        filter: ({ action, device_id }: PicoEvent<NAME>) =>
-          action === "press" && device_id === PicoIds[target_device],
+        exec: async () => ZCC.safeExec(async () => await exec()),
+        filter: ({ data: { device_id, action } }: TEventData<NAME>) => {
+          return action === "press" && device_id === PicoIds[target_device];
+        },
         label: target_device,
         match,
-        path: "button_type",
+        path: "data.button_type",
       });
     };
   }

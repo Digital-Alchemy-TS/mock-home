@@ -1,37 +1,55 @@
-import { LIB_AUTOMATION_LOGIC } from "@zcc/automation-logic";
-import { TServiceParams } from "@zcc/boilerplate";
-import { LIB_HOME_ASSISTANT } from "@zcc/home-assistant";
-import { HOUR } from "@zcc/utilities";
+import {
+  CronExpression,
+  HOUR,
+  MINUTE,
+  TServiceParams,
+} from "@digital-alchemy/core";
 
-import { AUTOMATION_EXAMPLE_APP } from "../main.mjs";
-
-export function BedRoom({ getApis, context }: TServiceParams) {
-  //
-  // imports & definitions
-  //
-  const app = getApis(AUTOMATION_EXAMPLE_APP);
-  const automation = getApis(LIB_AUTOMATION_LOGIC);
-  const hass = getApis(LIB_HOME_ASSISTANT);
-
-  //
-  // general functions
-  //
-
-  async function napTime() {
-    await app.global.globalOff();
-    await app.mock.playWhiteNoise();
+export function BedRoom({
+  automation,
+  context,
+  hass,
+  home_automation,
+  scheduler,
+  synapse,
+  vividra, // internal device interactions
+}: TServiceParams) {
+  // # General functions
+  async function napTime(time: number) {
+    await home_automation.global.globalOff();
+    home_automation.sensors.fanSoundPlaying.on = true;
+    await vividra.maple.startSound();
     setTimeout(async () => {
       room.scene = "high";
-      await app.mock.stopWhiteNoise();
-    }, HOUR);
+      home_automation.sensors.fanSoundPlaying.on = false;
+      await vividra.maple.stopSound();
+    }, time);
   }
 
-  //
-  // the room
-  //
+  synapse.button({
+    context,
+    exec: async () => await napTime(45 * MINUTE),
+    name: "45 min nap",
+  });
+
+  scheduler.cron({
+    exec: async () => {
+      home_automation.sensors.fanSoundPlaying.on = true;
+      await vividra.maple.startSound();
+    },
+    schedule: CronExpression.EVERY_DAY_AT_10PM,
+  });
+
+  scheduler.cron({
+    exec: async () => {
+      home_automation.sensors.fanSoundPlaying.on = false;
+    },
+    schedule: CronExpression.EVERY_DAY_AT_8AM,
+  });
+
+  // # Room definition
   const room = automation.room({
     context,
-    id: "bedroom",
     name: "Bedroom",
     scenes: {
       auto: {
@@ -109,52 +127,50 @@ export function BedRoom({ getApis, context }: TServiceParams) {
     },
   });
 
-  //
-  // entities
-  //
-  app.pico.bed({
+  // # Pico bindings
+  home_automation.pico.bed({
     context,
     exec: async () =>
       await hass.call.fan.increase_speed({
-        entity_id: "fan.bedroom_ceiling_fan",
+        entity_id: "fan.master_bedroom_ceiling_fan",
       }),
     match: ["raise", "raise"],
   });
 
-  app.pico.bed({
+  home_automation.pico.bed({
     context,
     exec: async () =>
       await hass.call.fan.decrease_speed({
-        entity_id: "fan.bedroom_ceiling_fan",
+        entity_id: "fan.master_bedroom_ceiling_fan",
       }),
     match: ["lower", "lower"],
   });
 
-  app.pico.bed({
+  home_automation.pico.bed({
     context,
-    exec: async () => await napTime(),
+    exec: async () => await napTime(HOUR),
     match: ["stop", "off"],
   });
 
-  app.pico.bed({
+  home_automation.pico.bed({
     context,
     exec: () => (room.scene = "off"),
     match: ["off"],
   });
 
-  app.pico.bedroom({
+  home_automation.pico.bedroom({
     context,
     exec: () => (room.scene = "off"),
     match: ["off"],
   });
 
-  app.pico.bed({
+  home_automation.pico.bed({
     context,
     exec: () => (room.scene = "high"),
     match: ["on"],
   });
 
-  app.pico.bedroom({
+  home_automation.pico.bedroom({
     context,
     exec: () => (room.scene = "high"),
     match: ["on"],

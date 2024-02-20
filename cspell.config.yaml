@@ -5,6 +5,8 @@ dictionaries: []
 words:
   - codez
   - hass
+  - pico
   - sonarjs
+  - womp
 ignoreWords: []
 import: []
