@@ -1,4 +1,4 @@
-import { CronExpression, TServiceParams, ZCC } from "@digital-alchemy/core";
+import { CronExpression, TServiceParams } from "@digital-alchemy/core";
 
 export function LivingRoom({
   automation,
@@ -115,7 +115,7 @@ export function LivingRoom({
       if (automation.solar.isBetween("sunriseEnd", "sunriseEnd")) {
         return false;
       }
-      const [PM8, NOW] = ZCC.shortTime(["PM08", "NOW"]);
+      const [PM8, NOW] = automation.utils.shortTime(["PM08", "NOW"]);
       return NOW.isAfter(PM8) && !room.scene.includes("high");
     },
   });
@@ -125,7 +125,7 @@ export function LivingRoom({
     entity_id: "switch.moon_mirror",
     onUpdate: [guestMode],
     shouldBeOn() {
-      const [PM5, AM5, NOW] = ZCC.shortTime(["PM5", "AM5", "NOW"]);
+      const [PM5, AM5, NOW] = automation.utils.shortTime(["PM5", "AM5", "NOW"]);
       if (!NOW.isBetween(AM5, PM5)) {
         return true;
       }

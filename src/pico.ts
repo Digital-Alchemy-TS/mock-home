@@ -1,9 +1,4 @@
-import {
-  TBlackHole,
-  TContext,
-  TServiceParams,
-  ZCC,
-} from "@digital-alchemy/core";
+import { TBlackHole, TContext, TServiceParams } from "@digital-alchemy/core";
 
 type DeviceName = keyof typeof PicoIds;
 
@@ -52,6 +47,7 @@ type TEventData<NAME extends DeviceName> = {
 
 export function LutronPicoBindings({
   automation,
+  internal,
 }: TServiceParams): PicoBindings {
   function LutronPicoSequenceMatcher<NAME extends DeviceName>(
     target_device: NAME,
@@ -60,7 +56,7 @@ export function LutronPicoBindings({
       return automation.sequence({
         context,
         event_type: "lutron_caseta_button_event",
-        exec: async () => ZCC.safeExec(async () => await exec()),
+        exec: async () => internal.safeExec(async () => await exec()),
         filter: ({ data: { device_id, action } }: TEventData<NAME>) => {
           return action === "press" && device_id === PicoIds[target_device];
         },

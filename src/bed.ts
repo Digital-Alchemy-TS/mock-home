@@ -12,17 +12,17 @@ export function BedRoom({
   home_automation,
   scheduler,
   synapse,
-  vividra, // internal device interactions
+  devices, // internal device interactions
 }: TServiceParams) {
   // # General functions
   async function napTime(time: number) {
     await home_automation.global.globalOff();
     home_automation.sensors.fanSoundPlaying.on = true;
-    await vividra.maple.startSound();
+    await devices.maple.startSound();
     setTimeout(async () => {
       room.scene = "high";
       home_automation.sensors.fanSoundPlaying.on = false;
-      await vividra.maple.stopSound();
+      await devices.maple.stopSound();
     }, time);
   }
 
@@ -35,7 +35,7 @@ export function BedRoom({
   scheduler.cron({
     exec: async () => {
       home_automation.sensors.fanSoundPlaying.on = true;
-      await vividra.maple.startSound();
+      await devices.maple.startSound();
     },
     schedule: CronExpression.EVERY_DAY_AT_10PM,
   });

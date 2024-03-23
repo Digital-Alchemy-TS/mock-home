@@ -1,4 +1,4 @@
-import { CronExpression, TServiceParams, ZCC } from "@digital-alchemy/core";
+import { CronExpression, TServiceParams } from "@digital-alchemy/core";
 import dayjs from "dayjs";
 
 export function Office({
@@ -9,7 +9,7 @@ export function Office({
   hass,
   logger,
   scheduler,
-  vividra, // internal device interactions
+  devices,
 }: TServiceParams) {
   const DIM_SCENES = new Set<typeof room.scene>([
     "off",
@@ -19,7 +19,11 @@ export function Office({
   ]);
   // # General functions
   function AutoScene(): typeof room.scene {
-    const [PM10, AM6, PM1030] = ZCC.shortTime(["PM10", "AM06", "PM10:30"]);
+    const [PM10, AM6, PM1030] = automation.utils.shortTime([
+      "PM10",
+      "AM06",
+      "PM10:30",
+    ]);
     const now = dayjs();
     if (now.isBetween(AM6, PM10)) {
       return "auto";
@@ -155,7 +159,7 @@ export function Office({
       if (meetingMode.state === "on") {
         return true;
       }
-      const [AM7, PM7, NOW] = ZCC.shortTime(["AM7", "PM7", "NOW"]);
+      const [AM7, PM7, NOW] = automation.utils.shortTime(["AM7", "PM7", "NOW"]);
       return !NOW.isBetween(AM7, PM7);
     },
   });
@@ -169,7 +173,11 @@ export function Office({
       // if (isHome.state === "off") {
       //   return false;
       // }
-      const [AM7, PM10, NOW] = ZCC.shortTime(["AM7", "PM10", "NOW"]);
+      const [AM7, PM10, NOW] = automation.utils.shortTime([
+        "AM7",
+        "PM10",
+        "NOW",
+      ]);
       return NOW.isBetween(AM7, PM10);
     },
   });
@@ -186,7 +194,7 @@ export function Office({
       if (!automation.solar.isBetween("sunrise", "sunset")) {
         return false;
       }
-      const [PM3, PM5, NOW] = ZCC.shortTime(["PM3", "PM5", "NOW"]);
+      const [PM3, PM5, NOW] = automation.utils.shortTime(["PM3", "PM5", "NOW"]);
       if (NOW.isBefore(PM3)) {
         return true;
       }
@@ -208,7 +216,7 @@ export function Office({
     onUpdate: [windowsOpen, room.sceneId(room.scene)],
     shouldBeOn() {
       const scene = room.scene;
-      const [PM9, AM5, NOW] = ZCC.shortTime(["PM9", "AM5", "NOW"]);
+      const [PM9, AM5, NOW] = automation.utils.shortTime(["PM9", "AM5", "NOW"]);
       return (scene !== "off" && NOW.isBetween(AM5, PM9)) || scene === "auto";
     },
   });
@@ -299,15 +307,15 @@ export function Office({
     // Tie monitor brightness to room scene
     // xrandr --output {display} --brightness {value}
     await (DIM_SCENES.has(room.scene)
-      ? vividra.graft.setMonitorDim()
-      : vividra.graft.setMonitorBright());
+      ? devices.graft.setMonitorDim()
+      : devices.graft.setMonitorBright());
 
     // Turn off display, and set the screen timeout super short when room is off
     // Set display timeout very long, and turn back on display when room is turned on
     // xset dpms force {off|on}
     await (room.scene === "off"
-      ? vividra.graft.shortTimeout()
-      : vividra.graft.longTimeout());
+      ? devices.graft.shortTimeout()
+      : devices.graft.longTimeout());
   });
 
   return room;

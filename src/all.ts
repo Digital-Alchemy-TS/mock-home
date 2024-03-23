@@ -1,5 +1,5 @@
-import { CronExpression, is, TServiceParams } from "@digital-alchemy/core";
-import { PICK_ENTITY } from "@digital-alchemy/core/hass";
+import { CronExpression, TServiceParams } from "@digital-alchemy/core";
+import { PICK_ENTITY } from "@digital-alchemy/hass";
 import dayjs from "dayjs";
 import { join } from "path";
 
@@ -13,7 +13,7 @@ export function AllRooms({
   home_automation,
   logger,
   scheduler,
-  vividra, // internal device interactions
+  devices, // internal device interactions
 }: TServiceParams) {
   //
   // imports & definitions
@@ -82,9 +82,7 @@ export function AllRooms({
   });
 
   async function globalDoorbell() {
-    const files = await vividra.orchid.listFiles();
-    const file = is.random(files);
-    await vividra.orchid.playSound(file);
+    await devices.orchid.playSound("bell");
   }
 
   hass.entity
@@ -129,7 +127,7 @@ export function AllRooms({
     // powered by kdeconnect
     home_automation.pico[i]({
       context,
-      exec: async () => await vividra.graft.findPhone(),
+      exec: async () => await devices.graft.findPhone(),
       match: ["stop", "lower", "raise"],
     });
 
